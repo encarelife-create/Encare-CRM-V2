@@ -1,34 +1,90 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+.App {
+  min-height: 100vh;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+/* Sidebar active state */
+.sidebar-link.active {
+  background: linear-gradient(to right, rgba(0, 150, 136, 0.1), rgba(76, 175, 80, 0.1));
+  border-left: 3px solid #009688;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.sidebar-link:hover:not(.active) {
+  background-color: #f1f5f9;
 }
 
-.App-link {
-    color: #61dafb;
+/* Chart tooltip styling */
+.recharts-tooltip-wrapper {
+  outline: none;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.custom-tooltip {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Data table row hover */
+.data-row:hover {
+  background-color: #f8fafc;
+}
+
+/* Call button animation */
+.call-btn {
+  transition: all 0.2s ease;
+}
+
+.call-btn:hover {
+  transform: scale(1.05);
+}
+
+/* Progress bar animation */
+@keyframes progress-fill {
+  from {
+    width: 0;
+  }
+}
+
+.progress-animated {
+  animation: progress-fill 1s ease-out forwards;
+}
+
+/* Vitals card colors */
+.vital-bp {
+  border-left: 4px solid #F44336;
+}
+
+.vital-sugar {
+  border-left: 4px solid #9C27B0;
+}
+
+.vital-weight {
+  border-left: 4px solid #2196F3;
+}
+
+/* Opportunity type colors */
+.opp-refill {
+  background: linear-gradient(135deg, #fff5f5 0%, #fff 100%);
+  border-left: 3px solid #F44336;
+}
+
+.opp-lab_test {
+  background: linear-gradient(135deg, #f5f3ff 0%, #fff 100%);
+  border-left: 3px solid #9C27B0;
+}
+
+.opp-product {
+  background: linear-gradient(135deg, #fff7ed 0%, #fff 100%);
+  border-left: 3px solid #FF9800;
+}
+
+.opp-vitals_alert {
+  background: linear-gradient(135deg, #fef2f2 0%, #fff 100%);
+  border-left: 3px solid #ef4444;
+}
+
+.opp-adherence {
+  background: linear-gradient(135deg, #ecfdf5 0%, #fff 100%);
+  border-left: 3px solid #10b981;
 }

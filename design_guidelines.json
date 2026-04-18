@@ -1,0 +1,112 @@
+{
+  "theme": {
+    "mode": "light",
+    "domain": "Healthcare CRM (enCARE MEDI REMINDER)",
+    "archetype": "1 (Organic & Trust) heavily adapted to User Specific Colors",
+    "vibe": "Clean, Professional, Data-dense, Action-oriented",
+    "instructions": "Follow the exact color schemes provided by the user. The app must feel like a modern, reliable medical command center that clearly guides Healthcare Assistants to their 'Next Best Action'."
+  },
+  "colors": {
+    "background": {
+      "main": "bg-slate-50",
+      "card": "bg-white",
+      "header": "bg-gradient-to-r from-[#009688] to-[#4CAF50]"
+    },
+    "gradients": {
+      "teal_header": "bg-gradient-to-r from-[#009688] to-[#4CAF50]",
+      "pink_coral_cta": "bg-gradient-to-r from-[#F44336] to-[#FF5722]"
+    },
+    "text": {
+      "primary": "text-slate-900",
+      "secondary": "text-slate-500",
+      "muted": "text-slate-400",
+      "on_teal": "text-white",
+      "on_coral": "text-white"
+    },
+    "status_icons": {
+      "blue": "text-blue-500 bg-blue-50",
+      "purple": "text-purple-500 bg-purple-50",
+      "orange": "text-orange-500 bg-orange-50",
+      "green": "text-emerald-500 bg-emerald-50",
+      "red": "text-red-500 bg-red-50"
+    },
+    "borders": "border-slate-100"
+  },
+  "typography": {
+    "font_families": {
+      "heading": "font-sans (Use Manrope or Work Sans. DO NOT USE INTER)",
+      "body": "font-sans (Use IBM Plex Sans or similar highly legible font for data)"
+    },
+    "scales": {
+      "h1": "text-2xl sm:text-3xl font-bold tracking-tight",
+      "h2": "text-xl sm:text-2xl font-semibold tracking-tight",
+      "h3": "text-lg font-medium",
+      "body": "text-sm text-slate-600",
+      "small": "text-xs text-slate-500 uppercase tracking-wider"
+    },
+    "rules": "Never center-align data tables or forms. Left-align for scannability. Use tabular-nums for vitals and revenue figures."
+  },
+  "layout": {
+    "spacing_system": "Use generous padding inside cards (p-5 or p-6). Gap between dashboard bento cards should be gap-4 or gap-6.",
+    "dashboard_grid": "Grid cols-1 md:grid-cols-3 lg:grid-cols-4 or 12-col bento grid. Utilize col-span logic for main charts vs sidebars.",
+    "cards": "rounded-xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-shadow",
+    "header": "Sticky top-0 z-50 p-4 shadow-md bg-gradient-to-r from-[#009688] to-[#4CAF50]"
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-gradient-to-r from-[#F44336] to-[#FF5722] text-white rounded-lg shadow-sm hover:opacity-90 transition-opacity font-medium px-4 py-2",
+      "secondary": "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2",
+      "icon_quick_action": "flex items-center justify-center p-3 rounded-xl transition-colors"
+    },
+    "charts": {
+      "library": "Recharts",
+      "vitals_colors": {
+        "bp": "#F44336",
+        "sugar": "#9C27B0",
+        "weight": "#2196F3"
+      },
+      "rules": "Use smooth lines (type='monotone') for vitals trends. Ensure tooltips are styled with white background and slate text."
+    },
+    "tables": {
+      "style": "Shadcn Table, border-b border-slate-100, text-sm, compact padding (py-3)"
+    },
+    "badges": {
+      "style": "px-2 py-1 rounded-md text-xs font-medium"
+    }
+  },
+  "visual_enhancers": {
+    "shadows": "Ambient subtle shadows. Avoid heavy block shadows.",
+    "icons": "lucide-react (apply color classes to stroke)",
+    "motion": "Use simple hover states (-translate-y-0.5) on quick action cards. No excessive animations."
+  },
+  "media": {
+    "images": [
+      {
+        "url": "https://images.pexels.com/photos/7108324/pexels-photo-7108324.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "background_or_empty_state",
+        "description": "Modern clinic interior with teal accents - good for empty states or welcome banners."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1597045226382-dee4ba273d3a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHw0fHxkaXZlcnNlJTIwcGVvcGxlJTIwcG9ydHJhaXRzJTIwc21pbGluZ3xlbnwwfHx8fDE3NzU4NzA2OTd8MA&ixlib=rb-4.1.0&q=85",
+        "category": "patient_avatar_placeholder_1",
+        "description": "Sample patient avatar"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1547121591-ebfd615332af?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NDh8MHwxfHNlYXJjaHwxfHxkaXZlcnNlJTIwcGVvcGxlJTIwcG9ydHJhaXRzJTIwc21pbGluZ3xlbnwwfHx8fDE3NzU4NzA2OTd8MA&ixlib=rb-4.1.0&q=85",
+        "category": "patient_avatar_placeholder_2",
+        "description": "Sample patient avatar"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build the dashboard using standard HTML/Tailwind for layouts and Shadcn for complex components (Tables, Dropdowns, Tabs).",
+    "Use Recharts for rendering Health Vitals (BP, Sugar, Weight) in the Patient Detail View.",
+    "Implement the 'Opportunity Center / Next Best Action' visually distinct with the pink-coral CTA gradient (#F44336 to #FF5722) to highlight revenue-generating tasks.",
+    "The App Header must use the Teal gradient (#009688 to #4CAF50).",
+    "Quick action cards must use the specified colored icons (Blue, Purple, Orange, Green) with soft tinted backgrounds (e.g. bg-blue-50 text-blue-500).",
+    "Cards must be white with subtle shadow and border (e.g. rounded-xl bg-white border border-slate-100 shadow-sm).",
+    "Ensure the layout feels like a data-dense, functional 'Control Room' for Healthcare Assistants.",
+    "CRITICAL: Add `data-testid` to all interactive elements (buttons, links, form inputs) using kebab-case role-based naming (e.g. data-testid='book-lab-test-button').",
+    "Use Lucide-React for all iconography."
+  ]
+}
