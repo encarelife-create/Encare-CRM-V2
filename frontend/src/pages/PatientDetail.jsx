@@ -94,6 +94,22 @@ export default function PatientDetail() {
   const [newVital, setNewVital] = useState({ type: "bp", value: "", systolic: "", diastolic: "", meal_context: "Fasting", notes: "" });
   const [newInteraction, setNewInteraction] = useState({ type: "call", purpose: "", notes: "", outcome: "positive", follow_up_date: "", follow_up_time: "09:00" });
   const [selectedLabTest, setSelectedLabTest] = useState(null);
+  // --- New Lab Test Booking multi-step flow state ---
+  // step: null (closed) | 'preference' | 'featured_select' | 'booking'
+  const [labFlowStep, setLabFlowStep] = useState(null);
+  const [labSource, setLabSource] = useState(null); // 'featured' | 'preferred_lab'
+  const [featuredSelections, setFeaturedSelections] = useState({}); // { [name]: true }
+  const [customFeaturedTests, setCustomFeaturedTests] = useState([]); // [{name, price, selected}]
+  const [customFeaturedInput, setCustomFeaturedInput] = useState({ name: "", price: "" });
+  const [preferredTests, setPreferredTests] = useState([{ name: "", price: "" }]);
+  const [labBookingForm, setLabBookingForm] = useState({
+    lab_name: "",
+    custom_lab_name: "",
+    use_custom_lab: false,
+    date: "",
+    time: "10:00",
+    notes: ""
+  });
   const [showMedicineDialog, setShowMedicineDialog] = useState(false);
   const [doctorAppointments, setDoctorAppointments] = useState([]);
   const [showApptDialog, setShowApptDialog] = useState(false);
@@ -344,6 +360,157 @@ export default function PatientDetail() {
       fetchPatient();
     } catch (error) {
       toast.error("Failed to book lab test");
+    }
+  };
+
+  // --- New multi-step Lab Test Booking Flow handlers ---
+  const resetLabFlow = () => {
+    setLabFlowStep(null);
+    setLabSource(null);
+    setFeaturedSelections({});
+    setCustomFeaturedTests([]);
+    setCustomFeaturedInput({ name: "", price: "" });
+    setPreferredTests([{ name: "", price: "" }]);
+    setLabBookingForm({ lab_name: "", custom_lab_name: "", use_custom_lab: false, date: "", time: "10:00", notes: "" });
+  };
+
+  const openLabFlow = () => {
+    resetLabFlow();
+    setLabFlowStep("preference");
+  };
+
+  const chooseLabSource = (source) => {
+    setLabSource(source);
+    if (source === "featured") {
+      setLabFlowStep("featured_select");
+    } else {
+      // Preferred lab: jump straight to booking details. Start with one empty test row.
+      setPreferredTests([{ name: "", price: "" }]);
+      setLabFlowStep("booking");
+    }
+  };
+
+  const toggleFeaturedSelection = (name) => {
+    setFeaturedSelections(prev => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const toggleCustomFeaturedSelection = (idx) => {
+    setCustomFeaturedTests(prev => prev.map((t, i) => i === idx ? { ...t, selected: !t.selected } : t));
+  };
+
+  const removeCustomFeaturedTest = (idx) => {
+    setCustomFeaturedTests(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const addCustomFeaturedTest = () => {
+    const name = customFeaturedInput.name.trim();
+    const price = parseFloat(customFeaturedInput.price);
+    if (!name) {
+      toast.error("Please enter a test name");
+      return;
+    }
+    if (Number.isNaN(price) || price < 0) {
+      toast.error("Please enter a valid price");
+      return;
+    }
+    setCustomFeaturedTests(prev => [...prev, { name, price, selected: true }]);
+    setCustomFeaturedInput({ name: "", price: "" });
+  };
+
+  const getSelectedFeaturedTests = () => {
+    const chosenFeatured = labSuggestions
+      .filter(t => featuredSelections[t.name])
+      .map(t => ({ name: t.name, price: Number(t.price) || 0 }));
+    const chosenCustom = customFeaturedTests
+      .filter(t => t.selected)
+      .map(t => ({ name: t.name, price: Number(t.price) || 0 }));
+    return [...chosenFeatured, ...chosenCustom];
+  };
+
+  const proceedFromFeaturedToBooking = () => {
+    const selected = getSelectedFeaturedTests();
+    if (selected.length === 0) {
+      toast.error("Please select at least one test");
+      return;
+    }
+    setLabFlowStep("booking");
+  };
+
+  const updatePreferredTest = (idx, field, value) => {
+    setPreferredTests(prev => prev.map((t, i) => i === idx ? { ...t, [field]: value } : t));
+  };
+
+  const addPreferredTestRow = () => {
+    setPreferredTests(prev => [...prev, { name: "", price: "" }]);
+  };
+
+  const removePreferredTestRow = (idx) => {
+    setPreferredTests(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
+  };
+
+  // Resolve the final list of tests regardless of flow path
+  const getFinalTestsForBooking = () => {
+    if (labSource === "featured") {
+      return getSelectedFeaturedTests();
+    }
+    return preferredTests
+      .filter(t => t.name.trim())
+      .map(t => ({ name: t.name.trim(), price: parseFloat(t.price) || 0 }));
+  };
+
+  const labBookingTotal = getFinalTestsForBooking().reduce((s, t) => s + (t.price || 0), 0);
+
+  // Past labs used for this patient (dropdown source)
+  const pastLabNames = Array.from(
+    new Set(
+      (patient?.lab_tests || [])
+        .map(lt => lt.lab_name)
+        .filter(Boolean)
+    )
+  );
+
+  const handleSubmitLabBooking = async () => {
+    const tests = getFinalTestsForBooking();
+    if (tests.length === 0) {
+      toast.error("Please add at least one test");
+      return;
+    }
+    const finalLabName = labBookingForm.use_custom_lab
+      ? labBookingForm.custom_lab_name.trim()
+      : labBookingForm.lab_name.trim();
+    if (!finalLabName) {
+      toast.error("Please select or enter a lab name");
+      return;
+    }
+    if (!labBookingForm.date) {
+      toast.error("Please choose a date");
+      return;
+    }
+    if (!labBookingForm.time) {
+      toast.error("Please choose a time");
+      return;
+    }
+    try {
+      const bookedDateIso = new Date(`${labBookingForm.date}T${labBookingForm.time}`).toISOString();
+      // One booking per selected test, all sharing same lab / date / time / notes
+      await Promise.all(
+        tests.map(t =>
+          bookLabTest(id, {
+            test_name: t.name,
+            price: t.price || 0,
+            booked_date: bookedDateIso,
+            scheduled_time: labBookingForm.time,
+            lab_name: finalLabName,
+            notes: labBookingForm.notes || null,
+            source: labSource
+          })
+        )
+      );
+      toast.success(`${tests.length} lab test${tests.length > 1 ? 's' : ''} booked at ${finalLabName}`);
+      resetLabFlow();
+      fetchPatient();
+    } catch (error) {
+      toast.error("Failed to book lab tests");
     }
   };
 
@@ -1733,60 +1900,392 @@ export default function PatientDetail() {
         <TabsContent value="labs">
           <div className="space-y-4" data-testid="labs-content">
             <div className="flex justify-end">
-              <Dialog open={showLabDialog} onOpenChange={setShowLabDialog}>
-                <DialogTrigger asChild>
-                  <Button className="gradient-coral text-white" data-testid="book-lab-test-btn">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Book Lab Test
+              <Button
+                className="gradient-coral text-white"
+                onClick={openLabFlow}
+                data-testid="book-lab-test-btn"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Book Lab Test
+              </Button>
+            </div>
+
+            {/* Step 1: Preference Dialog */}
+            <Dialog
+              open={labFlowStep === "preference"}
+              onOpenChange={(open) => { if (!open && labFlowStep === "preference") resetLabFlow(); }}
+            >
+              <DialogContent className="max-w-md" data-testid="lab-preference-dialog">
+                <DialogHeader>
+                  <DialogTitle>Choose Lab Test Preference</DialogTitle>
+                </DialogHeader>
+                <div className="py-2">
+                  <p className="text-sm text-slate-600 mb-4">
+                    Does <span className="font-semibold text-slate-800">{patient.name}</span> prefer our featured lab tests or their own preferred lab?
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => chooseLabSource("featured")}
+                      className="p-4 rounded-xl border-2 border-slate-200 hover:border-teal-400 hover:bg-teal-50 transition text-left group"
+                      data-testid="lab-pref-featured-btn"
+                    >
+                      <div className="p-2 rounded-lg bg-teal-100 text-teal-600 w-fit mb-2 group-hover:scale-105 transition">
+                        <FlaskConical className="h-5 w-5" />
+                      </div>
+                      <p className="font-semibold text-slate-800">Featured Tests</p>
+                      <p className="text-xs text-slate-500 mt-1">Choose from our curated/recommended lab tests</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => chooseLabSource("preferred_lab")}
+                      className="p-4 rounded-xl border-2 border-slate-200 hover:border-coral-400 hover:bg-orange-50 transition text-left group"
+                      data-testid="lab-pref-preferred-btn"
+                    >
+                      <div className="p-2 rounded-lg bg-orange-100 text-orange-600 w-fit mb-2 group-hover:scale-105 transition">
+                        <Building2 className="h-5 w-5" />
+                      </div>
+                      <p className="font-semibold text-slate-800">Patient's Preferred Lab</p>
+                      <p className="text-xs text-slate-500 mt-1">Enter tests manually for the patient's own lab</p>
+                    </button>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={resetLabFlow} data-testid="lab-pref-cancel-btn">
+                    Cancel
                   </Button>
-                </DialogTrigger>
-                <DialogContent data-testid="lab-test-dialog">
-                  <DialogHeader>
-                    <DialogTitle>Book Lab Test</DialogTitle>
-                  </DialogHeader>
-                  <div className="py-4">
-                    <p className="text-sm text-slate-500 mb-4">
-                      Recommended tests based on patient's conditions:
-                    </p>
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                      {labSuggestions.map((test, i) => (
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Step 2a: Featured tests selection */}
+            <Dialog
+              open={labFlowStep === "featured_select"}
+              onOpenChange={(open) => { if (!open && labFlowStep === "featured_select") resetLabFlow(); }}
+            >
+              <DialogContent className="max-w-lg max-h-[85vh] flex flex-col" data-testid="lab-featured-select-dialog">
+                <DialogHeader className="shrink-0 border-b pb-3">
+                  <DialogTitle>Select Featured Lab Tests</DialogTitle>
+                </DialogHeader>
+                <div className="py-4 overflow-y-auto flex-1 min-h-0 space-y-4">
+                  <p className="text-xs text-slate-500">
+                    Tick the tests the patient wants to perform. You can also add other tests manually below.
+                  </p>
+
+                  {/* Featured suggestions */}
+                  <div className="space-y-2">
+                    {labSuggestions.length === 0 ? (
+                      <p className="text-sm text-slate-400 italic">No featured tests available for this patient.</p>
+                    ) : labSuggestions.map((test, i) => {
+                      const checked = !!featuredSelections[test.name];
+                      return (
+                        <label
+                          key={i}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${checked ? "border-teal-500 bg-teal-50" : "border-slate-200 hover:border-teal-200"}`}
+                          data-testid={`lab-featured-option-${i}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleFeaturedSelection(test.name)}
+                            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                            data-testid={`lab-featured-checkbox-${i}`}
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-900 text-sm">{test.name}</p>
+                            <p className="text-xs text-slate-500">Frequency: Every {test.frequency_months} months</p>
+                          </div>
+                          <p className="font-semibold text-teal-600 text-sm tabular-nums">₹{Number(test.price).toLocaleString('en-IN')}</p>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom-added tests list (also selectable) */}
+                  {customFeaturedTests.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Added Manually</p>
+                      {customFeaturedTests.map((t, i) => (
                         <div
                           key={i}
-                          className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                            selectedLabTest?.name === test.name
-                              ? 'border-teal-500 bg-teal-50'
-                              : 'border-slate-200 hover:border-teal-200'
-                          }`}
-                          onClick={() => setSelectedLabTest(test)}
-                          data-testid={`lab-test-option-${i}`}
+                          className={`flex items-center gap-3 p-3 rounded-lg border ${t.selected ? "border-coral-400 bg-orange-50" : "border-slate-200"}`}
+                          data-testid={`lab-custom-test-${i}`}
                         >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium text-slate-900">{test.name}</p>
-                              <p className="text-xs text-slate-500">
-                                Frequency: Every {test.frequency_months} months
-                              </p>
-                            </div>
-                            <p className="font-semibold text-teal-600">₹{test.price}</p>
+                          <input
+                            type="checkbox"
+                            checked={!!t.selected}
+                            onChange={() => toggleCustomFeaturedSelection(i)}
+                            className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-slate-900 text-sm truncate">{t.name}</p>
                           </div>
+                          <p className="font-semibold text-coral-500 text-sm tabular-nums">₹{Number(t.price).toLocaleString('en-IN')}</p>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-slate-400 hover:text-red-500"
+                            onClick={() => removeCustomFeaturedTest(i)}
+                            data-testid={`lab-custom-test-remove-${i}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       ))}
                     </div>
+                  )}
+
+                  {/* Add custom test row */}
+                  <div className="p-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 space-y-2">
+                    <p className="text-xs font-medium text-slate-600">Add another test manually</p>
+                    <div className="grid grid-cols-[1fr_120px_auto] gap-2 items-center">
+                      <Input
+                        value={customFeaturedInput.name}
+                        onChange={(e) => setCustomFeaturedInput(v => ({ ...v, name: e.target.value }))}
+                        placeholder="e.g. Vitamin D 25-OH"
+                        data-testid="lab-custom-test-name-input"
+                      />
+                      <Input
+                        type="number"
+                        value={customFeaturedInput.price}
+                        onChange={(e) => setCustomFeaturedInput(v => ({ ...v, price: e.target.value }))}
+                        placeholder="Price ₹"
+                        min="0"
+                        step="1"
+                        data-testid="lab-custom-test-price-input"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="text-teal-600 border-teal-200 hover:bg-teal-50"
+                        onClick={addCustomFeaturedTest}
+                        data-testid="lab-custom-test-add-btn"
+                      >
+                        <Plus className="h-4 w-4 mr-1" /> Add
+                      </Button>
+                    </div>
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setShowLabDialog(false)}>Cancel</Button>
-                    <Button
-                      onClick={handleBookLabTest}
-                      disabled={!selectedLabTest}
-                      className="gradient-coral text-white"
-                      data-testid="confirm-book-lab-btn"
+                </div>
+                <DialogFooter className="shrink-0 border-t pt-3">
+                  <Button variant="outline" onClick={resetLabFlow} data-testid="lab-featured-cancel-btn">Cancel</Button>
+                  <Button
+                    onClick={proceedFromFeaturedToBooking}
+                    className="gradient-coral text-white"
+                    data-testid="lab-featured-book-btn"
+                  >
+                    Book Test ({getSelectedFeaturedTests().length})
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Step 3: Booking details (common for both paths) */}
+            <Dialog
+              open={labFlowStep === "booking"}
+              onOpenChange={(open) => { if (!open && labFlowStep === "booking") resetLabFlow(); }}
+            >
+              <DialogContent className="max-w-lg max-h-[90vh] flex flex-col" data-testid="lab-booking-dialog">
+                <DialogHeader className="shrink-0 border-b pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-indigo-100 text-indigo-600">
+                      <FlaskConical className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <DialogTitle>Book Lab Test</DialogTitle>
+                      <p className="text-xs text-slate-500">For {patient.name}</p>
+                    </div>
+                  </div>
+                </DialogHeader>
+                <div className="py-4 overflow-y-auto flex-1 min-h-0 space-y-4">
+                  {/* Tests */}
+                  <div className="space-y-2">
+                    <Label>Tests</Label>
+                    {labSource === "featured" ? (
+                      <div className="space-y-2 rounded-lg border border-slate-200 p-3 bg-slate-50" data-testid="lab-booking-tests-readonly">
+                        {getFinalTestsForBooking().length === 0 ? (
+                          <p className="text-xs text-slate-400 italic">No tests selected. Go back and pick at least one.</p>
+                        ) : getFinalTestsForBooking().map((t, i) => (
+                          <div key={i} className="flex items-center justify-between text-sm">
+                            <span className="text-slate-700">{t.name}</span>
+                            <span className="text-slate-900 font-medium tabular-nums">₹{t.price.toLocaleString('en-IN')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-2" data-testid="lab-booking-tests-editable">
+                        {preferredTests.map((t, idx) => (
+                          <div key={idx} className="grid grid-cols-[1fr_120px_40px] gap-2 items-center">
+                            <Input
+                              value={t.name}
+                              onChange={(e) => updatePreferredTest(idx, "name", e.target.value)}
+                              placeholder={`Test ${idx + 1} name`}
+                              data-testid={`lab-preferred-test-name-${idx}`}
+                            />
+                            <Input
+                              type="number"
+                              value={t.price}
+                              onChange={(e) => updatePreferredTest(idx, "price", e.target.value)}
+                              placeholder="Price ₹"
+                              min="0"
+                              step="1"
+                              data-testid={`lab-preferred-test-price-${idx}`}
+                            />
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-9 w-9 text-slate-400 hover:text-red-500"
+                              onClick={() => removePreferredTestRow(idx)}
+                              disabled={preferredTests.length === 1}
+                              data-testid={`lab-preferred-test-remove-${idx}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-teal-600 border-teal-200 hover:bg-teal-50"
+                          onClick={addPreferredTestRow}
+                          data-testid="lab-preferred-test-add-btn"
+                        >
+                          <Plus className="h-4 w-4 mr-1" /> Add Test
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Lab Name */}
+                  <div className="space-y-2">
+                    <Label>Lab Name</Label>
+                    {!labBookingForm.use_custom_lab ? (
+                      <div className="flex gap-2">
+                        <Select
+                          value={labBookingForm.lab_name}
+                          onValueChange={(v) => setLabBookingForm(f => ({ ...f, lab_name: v }))}
+                        >
+                          <SelectTrigger className="flex-1" data-testid="lab-name-select">
+                            <SelectValue placeholder={pastLabNames.length ? "Choose a lab..." : "No previous labs — click + New"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pastLabNames.length === 0 ? (
+                              <div className="px-2 py-1.5 text-xs text-slate-400">No previously used labs</div>
+                            ) : pastLabNames.map((n, i) => (
+                              <SelectItem key={i} value={n}>{n}</SelectItem>
+                            ))}
+                            {patient.regular_lab_details && !pastLabNames.includes(patient.regular_lab_details) && (
+                              <SelectItem value={patient.regular_lab_details}>
+                                {patient.regular_lab_details} <span className="text-xs text-slate-400">(regular)</span>
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="text-teal-600 border-teal-200 hover:bg-teal-50"
+                          onClick={() => setLabBookingForm(f => ({ ...f, use_custom_lab: true, lab_name: "" }))}
+                          data-testid="lab-name-new-btn"
+                        >
+                          <Plus className="h-4 w-4 mr-1" /> New
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Input
+                          value={labBookingForm.custom_lab_name}
+                          onChange={(e) => setLabBookingForm(f => ({ ...f, custom_lab_name: e.target.value }))}
+                          placeholder="Enter lab name"
+                          data-testid="lab-name-custom-input"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="text-slate-500"
+                          onClick={() => setLabBookingForm(f => ({ ...f, use_custom_lab: false, custom_lab_name: "" }))}
+                          data-testid="lab-name-back-btn"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Date & Time */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Date</Label>
+                      <Input
+                        type="date"
+                        value={labBookingForm.date}
+                        onChange={(e) => setLabBookingForm(f => ({ ...f, date: e.target.value }))}
+                        min={new Date().toISOString().split("T")[0]}
+                        data-testid="lab-booking-date-input"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Time</Label>
+                      <Input
+                        type="time"
+                        value={labBookingForm.time}
+                        onChange={(e) => setLabBookingForm(f => ({ ...f, time: e.target.value }))}
+                        data-testid="lab-booking-time-input"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div className="space-y-2">
+                    <Label>Notes (Optional)</Label>
+                    <Textarea
+                      value={labBookingForm.notes}
+                      onChange={(e) => setLabBookingForm(f => ({ ...f, notes: e.target.value }))}
+                      placeholder="Any special instructions..."
+                      rows={2}
+                      data-testid="lab-booking-notes-input"
+                    />
+                  </div>
+
+                  {/* Total Amount Payable */}
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                    <span className="text-sm text-slate-500">Total Amount Payable</span>
+                    <span
+                      className="text-xl font-bold text-teal-700 tabular-nums flex items-center"
+                      data-testid="lab-booking-total"
                     >
-                      Book Test
+                      <IndianRupee className="h-4 w-4" />
+                      {labBookingTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+                <DialogFooter className="shrink-0 border-t pt-3">
+                  {labSource === "featured" && (
+                    <Button
+                      variant="ghost"
+                      className="mr-auto text-slate-600"
+                      onClick={() => setLabFlowStep("featured_select")}
+                      data-testid="lab-booking-back-btn"
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-1" /> Back
                     </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
+                  )}
+                  <Button variant="outline" onClick={resetLabFlow} data-testid="lab-booking-cancel-btn">
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSubmitLabBooking}
+                    className="gradient-coral text-white"
+                    data-testid="lab-booking-submit-btn"
+                  >
+                    Book Lab Test
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Booked Tests */}
             <Card>
@@ -1799,18 +2298,25 @@ export default function PatientDetail() {
                 ) : (
                   <div className="space-y-3">
                     {patient.lab_tests?.map((test, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-50">
+                      <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-50" data-testid={`booked-lab-test-${i}`}>
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-purple-100 text-purple-500">
                             <FlaskConical className="h-4 w-4" />
                           </div>
                           <div>
                             <p className="font-medium text-slate-900">{test.test_name}</p>
-                            {test.booked_date && (
-                              <p className="text-xs text-slate-500">
-                                Booked for: {new Date(test.booked_date).toLocaleDateString('en-IN')}
-                              </p>
-                            )}
+                            <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500 flex-wrap">
+                              {test.lab_name && <span>{test.lab_name}</span>}
+                              {test.booked_date && (
+                                <span>
+                                  {new Date(test.booked_date).toLocaleDateString('en-IN')}
+                                  {test.scheduled_time ? ` • ${test.scheduled_time}` : ''}
+                                </span>
+                              )}
+                              {typeof test.price === 'number' && test.price > 0 && (
+                                <span className="text-green-600 font-medium">₹{test.price.toLocaleString('en-IN')}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <Badge variant="outline" className="capitalize">{test.status}</Badge>

@@ -1043,6 +1043,10 @@ async def book_lab_test(patient_id: str, data: Dict):
         "booked_date": data.get("booked_date"),
         "status": "booked",
         "price": data.get("price", 0),
+        "lab_name": data.get("lab_name"),
+        "scheduled_time": data.get("scheduled_time"),
+        "notes": data.get("notes"),
+        "source": data.get("source"),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.lab_bookings.insert_one(booking)

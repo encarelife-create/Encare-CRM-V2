@@ -21,6 +21,21 @@ Build a Healthcare CRM module for enCARE MEDI REMINDER app. The CRM is an allied
 
 ## What's Been Implemented
 
+### Date: April 18, 2026 — Lab Test Booking — New Multi-Step Flow (NEW)
+Reworked the "Book Lab Test" flow on the Patient Detail page (`/app/frontend/src/pages/PatientDetail.jsx`) and extended `POST /api/patients/{id}/lab-tests/book` (`/app/backend/server.py`) to persist `lab_name`, `scheduled_time`, `notes`, and `source`.
+- **Step 1 (Preference)** — Choosing "Book Lab Test" now asks: *"Does the patient prefer our featured lab tests or their own preferred lab?"* with two cards: **Featured Tests** / **Patient's Preferred Lab**.
+- **Step 2a (Featured Tests)** — Multi-select checklist of featured/recommended tests (with price) plus an inline free-text row to manually add other tests with price. Selection count shown in "Book Test" button.
+- **Step 2b (Preferred Lab)** — Skips straight to booking dialog with editable free-text test rows (name + price, "Add Test").
+- **Step 3 (Booking Details)** — Common for both paths, contains:
+  - Tests (auto-populated or editable)
+  - Lab Name (dropdown of previously-used labs + patient's regular lab + "+ New" to free-text a new lab)
+  - Date, Time
+  - Notes (optional)
+  - Live "Total Amount Payable" summing all test prices
+- On submit, one booking per test is saved (all sharing the same lab/date/time/notes/source).
+- Booked Lab Tests card now also shows lab name, date + time, and price per booking.
+- Frontend manually verified end-to-end (both paths + dropdown reuse of previously entered lab).
+
 ### Date: April 18, 2026 — E-commerce Invoice Creator (NEW — Phase 1)
 - New "Create Product Invoice" section added on the Products tab of the Patient Detail page (`/app/frontend/src/pages/PatientDetail.jsx`), placed BELOW the existing "Suggested Products for …" section
 - Healthcare Assistant can add multiple products line-by-line (product name + price)
