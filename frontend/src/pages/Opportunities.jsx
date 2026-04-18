@@ -298,11 +298,25 @@ export default function Opportunities() {
                         <X className="h-4 w-4" />
                       </Button>
                       <Link to={`/patients/${opp.patient_id}`}>
-                        <Button size="sm" className="gradient-teal text-white" data-testid={`view-patient-${i}`}>
-                          <Phone className="h-4 w-4 mr-1" />
-                          Call
+                        <Button size="sm" variant="outline" className="text-teal-600 border-teal-200 hover:bg-teal-50" data-testid={`view-patient-${i}`}>
+                          View
                         </Button>
                       </Link>
+                      <Button
+                        size="sm"
+                        className="gradient-teal text-white disabled:opacity-50"
+                        disabled={!opp.patient_phone}
+                        onClick={() => {
+                          if (opp.patient_phone) {
+                            window.location.href = `tel:${opp.patient_phone}`;
+                          }
+                        }}
+                        data-testid={`call-opp-${i}`}
+                        title={opp.patient_phone ? `Call ${opp.patient_phone}` : "No phone number on file"}
+                      >
+                        <Phone className="h-4 w-4 mr-1" />
+                        Call
+                      </Button>
                     </div>
                   </div>
                 </CardContent>

@@ -21,7 +21,15 @@ Build a Healthcare CRM module for enCARE MEDI REMINDER app. The CRM is an allied
 
 ## What's Been Implemented
 
-### Date: April 18, 2026 — Lab Test Booking — New Multi-Step Flow (NEW)
+### Date: April 18, 2026 — Click-to-Call (Phase 1: `tel:` links) (NEW)
+Direct phone dial from CRM "Call" buttons using native `tel:` URI. Opens the device's default dialer (mobile phone app or desktop softphone). Zero cost, no third-party integration.
+- **Patient Detail header "Call Patient"** button (`PatientDetail.jsx:729`) → `tel:${patient.phone}` (already wired)
+- **Patients list card "Call" icon** (`Patients.jsx:410`) → `tel:${patient.phone}` (already wired)
+- **Caregiver phone links** in Patient Detail → `<a href="tel:...">` (already wired)
+- **Opportunities page "Call" button** (`Opportunities.jsx`) — replaced navigation-only button. Now dials patient directly; shows adjacent "View" button to open patient profile. Disabled with tooltip when phone missing.
+- **Backend** — `Opportunity` model now stores `patient_phone` (`server.py:260`); `generate_opportunities` populates it from the patient record. All 5 opportunity types (refill, invoice, lab_test, product, adherence) enriched.
+
+### Date: April 18, 2026 — Lab Test Booking — New Multi-Step Flow
 Reworked the "Book Lab Test" flow on the Patient Detail page (`/app/frontend/src/pages/PatientDetail.jsx`) and extended `POST /api/patients/{id}/lab-tests/book` (`/app/backend/server.py`) to persist `lab_name`, `scheduled_time`, `notes`, and `source`.
 - **Step 1 (Preference)** — Choosing "Book Lab Test" now asks: *"Does the patient prefer our featured lab tests or their own preferred lab?"* with two cards: **Featured Tests** / **Patient's Preferred Lab**.
 - **Step 2a (Featured Tests)** — Lab selector at the top (sourced from `/api/laboratories` = Lab Test Catalog → Laboratories), multi-select checklist of featured/recommended tests (with price) plus an inline free-text row to manually add other tests with price. Cannot proceed without choosing a lab + at least one test.

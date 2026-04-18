@@ -258,6 +258,7 @@ class Opportunity(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     patient_id: str
     patient_name: str
+    patient_phone: str = ""
     type: str  # refill, lab_test, product, vitals_alert, adherence, invoice
     description: str
     priority: str  # high, medium, low
@@ -1119,6 +1120,7 @@ async def generate_opportunities():
     for patient in patients:
         patient_id = patient["id"]
         patient_name = patient["name"]
+        patient_phone = patient.get("phone", "")
         
         # Check refill opportunities from medicines
         for med in patient.get("medicines", []):
@@ -1127,6 +1129,7 @@ async def generate_opportunities():
                 opp = Opportunity(
                     patient_id=patient_id,
                     patient_name=patient_name,
+                    patient_phone=patient_phone,
                     type="refill",
                     description=f"{med['name']} running low ({stock_status['days_left']} days left)",
                     priority="high" if stock_status["days_left"] <= 3 else "medium",
@@ -1145,6 +1148,7 @@ async def generate_opportunities():
             opp = Opportunity(
                 patient_id=patient_id,
                 patient_name=patient_name,
+                patient_phone=patient_phone,
                 type="invoice",
                 description=f"Monthly invoice: ₹{total_invoice:,.0f}",
                 priority="medium",
@@ -1160,6 +1164,7 @@ async def generate_opportunities():
                 opp = Opportunity(
                     patient_id=patient_id,
                     patient_name=patient_name,
+                    patient_phone=patient_phone,
                     type="lab_test",
                     description=f"{test['name']} recommended",
                     priority="medium",
@@ -1175,6 +1180,7 @@ async def generate_opportunities():
             opp = Opportunity(
                 patient_id=patient_id,
                 patient_name=patient_name,
+                patient_phone=patient_phone,
                 type="product",
                 description=f"Suggest {prod['name']} for {prod['disease']}",
                 priority="low",
@@ -1187,6 +1193,7 @@ async def generate_opportunities():
             opp = Opportunity(
                 patient_id=patient_id,
                 patient_name=patient_name,
+                patient_phone=patient_phone,
                 type="adherence",
                 description=f"Low adherence ({patient['adherence_rate']}%) - needs follow-up",
                 priority="high",
