@@ -103,6 +103,7 @@ export default function PatientDetail() {
   });
   const [editingMedicine, setEditingMedicine] = useState(null);
   const [invoiceItems, setInvoiceItems] = useState([{ name: "", price: "" }]);
+  const [invoiceDiscountedPrice, setInvoiceDiscountedPrice] = useState("");
   const [showInvoiceConfirm, setShowInvoiceConfirm] = useState(false);
   const [medForm, setMedForm] = useState({
     name: "", dosage: "", form: "Tablet", color: "#FF6B6B", instructions: "",
@@ -361,12 +362,22 @@ export default function PatientDetail() {
 
   const resetInvoice = () => {
     setInvoiceItems([{ name: "", price: "" }]);
+    setInvoiceDiscountedPrice("");
   };
 
   const invoiceTotal = invoiceItems.reduce(
     (sum, it) => sum + (parseFloat(it.price) || 0),
     0
   );
+
+  const invoiceDiscountedValue = parseFloat(invoiceDiscountedPrice);
+  const hasDiscount =
+    invoiceDiscountedPrice !== "" &&
+    !Number.isNaN(invoiceDiscountedValue) &&
+    invoiceDiscountedValue >= 0 &&
+    invoiceDiscountedValue <= invoiceTotal;
+  const effectiveDiscountedPrice = hasDiscount ? invoiceDiscountedValue : invoiceTotal;
+  const invoiceSavings = Math.max(0, invoiceTotal - effectiveDiscountedPrice);
 
   const hasValidInvoiceItem = invoiceItems.some(
     it => it.name.trim() !== "" && parseFloat(it.price) > 0
@@ -1442,7 +1453,71 @@ export default function PatientDetail() {
             </Card>
           ) : (
             <div className="space-y-4">
-              {/* Custom Invoice / E-commerce Section */}
+              <Card data-testid="products-content">
+              {patient.marketing_consent === 'moderate' && (
+                <div className="mx-6 mt-4 p-3 rounded-lg border border-amber-200 bg-amber-50 flex items-center gap-2" data-testid="moderate-consent-warning">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                  <p className="text-xs text-amber-700">This patient has <span className="font-semibold">moderate</span> marketing consent — limit suggestions to medicine refills only. Avoid promotional outreach.</p>
+                </div>
+              )}
+              <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg font-semibold font-['Manrope']">
+                    Suggested Products for {patient.name}
+                  </CardTitle>
+                  <p className="text-sm text-slate-500">
+                    Based on patient's conditions: {patient.diseases?.join(", ")}
+                  </p>
+                </div>
+                <a href="https://www.1mg.com/categories" target="_blank" rel="noopener noreferrer" data-testid="browse-1mg-link">
+                  <Button variant="outline" size="sm" className="text-teal-600 border-teal-200 hover:bg-teal-50">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    Browse on 1mg
+                  </Button>
+                </a>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {productSuggestions.length === 0 ? (
+                <p className="text-center text-slate-500 py-8">No product suggestions available</p>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {productSuggestions.map((product, i) => (
+                    <a
+                      key={i}
+                      href={`https://www.1mg.com/search/all?name=${encodeURIComponent(product.name)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block p-4 rounded-lg border border-slate-100 bg-gradient-to-r from-orange-50 to-white hover:shadow-md hover:border-teal-200 transition-all cursor-pointer"
+                      data-testid={`product-suggestion-${i}`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <Badge variant="outline" className="mb-2 text-xs">
+                            {product.disease}
+                          </Badge>
+                          <h4 className="font-medium text-slate-900">{product.name}</h4>
+                          <p className="text-sm text-slate-500 mt-1">{product.purpose}</p>
+                          <p className="text-sm font-semibold text-teal-600 mt-2">
+                            ₹{product.price?.toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                        <div className={`p-2 rounded-lg ${product.category === 'equipment' ? 'bg-blue-100 text-blue-500' : 'bg-green-100 text-green-500'}`}>
+                          <ShoppingBag className="h-5 w-5" />
+                        </div>
+                      </div>
+                      <p className="text-xs text-teal-500 mt-2 flex items-center gap-1">
+                        <ExternalLink className="h-3 w-3" /> Search on 1mg
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+              {/* Custom Invoice / E-commerce Section (placed BELOW Suggested Products) */}
               <Card data-testid="custom-invoice-section">
                 <CardHeader>
                   <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1517,16 +1592,53 @@ export default function PatientDetail() {
                     </Button>
                   </div>
 
-                  {/* Total */}
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                    <span className="text-sm text-slate-500">Total</span>
-                    <span
-                      className="text-2xl font-bold text-teal-700 tabular-nums flex items-center"
-                      data-testid="invoice-total-amount"
-                    >
-                      <IndianRupee className="h-5 w-5" />
-                      {invoiceTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
+                  {/* Pricing Summary (Total + Discounted + Savings) */}
+                  <div className="pt-3 border-t border-slate-100 space-y-3" data-testid="invoice-pricing-summary">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-slate-500">Total Price</Label>
+                      <span
+                        className="text-xl font-bold text-slate-900 tabular-nums flex items-center"
+                        data-testid="invoice-total-amount"
+                      >
+                        <IndianRupee className="h-4 w-4" />
+                        {invoiceTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="invoice-discounted-price" className="text-sm text-slate-500 shrink-0">
+                        Discounted Price
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500 text-sm">₹</span>
+                        <Input
+                          id="invoice-discounted-price"
+                          type="number"
+                          value={invoiceDiscountedPrice}
+                          onChange={(e) => setInvoiceDiscountedPrice(e.target.value)}
+                          placeholder="0.00"
+                          min="0"
+                          max={invoiceTotal || undefined}
+                          step="0.01"
+                          className="w-40 text-right"
+                          data-testid="invoice-discounted-price-input"
+                        />
+                      </div>
+                    </div>
+                    {invoiceDiscountedPrice !== "" && !hasDiscount && invoiceTotal > 0 && (
+                      <p className="text-xs text-red-500 text-right" data-testid="invoice-discount-error">
+                        Discounted Price must be between ₹0 and ₹{invoiceTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm text-slate-500">Savings</Label>
+                      <span
+                        className="text-xl font-bold text-green-600 tabular-nums flex items-center"
+                        data-testid="invoice-savings-amount"
+                      >
+                        <IndianRupee className="h-4 w-4" />
+                        {invoiceSavings.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Action buttons */}
@@ -1571,11 +1683,25 @@ export default function PatientDetail() {
                             </span>
                           </div>
                         ))}
-                      <div className="flex items-center justify-between px-3 py-2 text-sm bg-teal-50">
-                        <span className="font-semibold text-slate-700">Total</span>
-                        <span className="font-bold text-teal-700 tabular-nums flex items-center">
-                          <IndianRupee className="h-4 w-4" />
+                      <div className="flex items-center justify-between px-3 py-2 text-sm">
+                        <span className="text-slate-600">Total Price</span>
+                        <span className="font-semibold text-slate-900 tabular-nums flex items-center" data-testid="confirm-total-amount">
+                          <IndianRupee className="h-3.5 w-3.5" />
                           {invoiceTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between px-3 py-2 text-sm">
+                        <span className="text-slate-600">Discounted Price</span>
+                        <span className="font-semibold text-teal-700 tabular-nums flex items-center" data-testid="confirm-discounted-amount">
+                          <IndianRupee className="h-3.5 w-3.5" />
+                          {effectiveDiscountedPrice.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between px-3 py-2 text-sm bg-green-50">
+                        <span className="font-semibold text-slate-700">Savings</span>
+                        <span className="font-bold text-green-600 tabular-nums flex items-center" data-testid="confirm-savings-amount">
+                          <IndianRupee className="h-4 w-4" />
+                          {invoiceSavings.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </div>
@@ -1599,70 +1725,6 @@ export default function PatientDetail() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-
-              <Card data-testid="products-content">
-              {patient.marketing_consent === 'moderate' && (
-                <div className="mx-6 mt-4 p-3 rounded-lg border border-amber-200 bg-amber-50 flex items-center gap-2" data-testid="moderate-consent-warning">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                  <p className="text-xs text-amber-700">This patient has <span className="font-semibold">moderate</span> marketing consent — limit suggestions to medicine refills only. Avoid promotional outreach.</p>
-                </div>
-              )}
-              <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg font-semibold font-['Manrope']">
-                    Suggested Products for {patient.name}
-                  </CardTitle>
-                  <p className="text-sm text-slate-500">
-                    Based on patient's conditions: {patient.diseases?.join(", ")}
-                  </p>
-                </div>
-                <a href="https://www.1mg.com/categories" target="_blank" rel="noopener noreferrer" data-testid="browse-1mg-link">
-                  <Button variant="outline" size="sm" className="text-teal-600 border-teal-200 hover:bg-teal-50">
-                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                    Browse on 1mg
-                  </Button>
-                </a>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {productSuggestions.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">No product suggestions available</p>
-              ) : (
-                <div className="grid md:grid-cols-2 gap-4">
-                  {productSuggestions.map((product, i) => (
-                    <a
-                      key={i}
-                      href={`https://www.1mg.com/search/all?name=${encodeURIComponent(product.name)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block p-4 rounded-lg border border-slate-100 bg-gradient-to-r from-orange-50 to-white hover:shadow-md hover:border-teal-200 transition-all cursor-pointer"
-                      data-testid={`product-suggestion-${i}`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <Badge variant="outline" className="mb-2 text-xs">
-                            {product.disease}
-                          </Badge>
-                          <h4 className="font-medium text-slate-900">{product.name}</h4>
-                          <p className="text-sm text-slate-500 mt-1">{product.purpose}</p>
-                          <p className="text-sm font-semibold text-teal-600 mt-2">
-                            ₹{product.price?.toLocaleString('en-IN')}
-                          </p>
-                        </div>
-                        <div className={`p-2 rounded-lg ${product.category === 'equipment' ? 'bg-blue-100 text-blue-500' : 'bg-green-100 text-green-500'}`}>
-                          <ShoppingBag className="h-5 w-5" />
-                        </div>
-                      </div>
-                      <p className="text-xs text-teal-500 mt-2 flex items-center gap-1">
-                        <ExternalLink className="h-3 w-3" /> Search on 1mg
-                      </p>
-                    </a>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
             </div>
           )}
         </TabsContent>
