@@ -22,17 +22,19 @@ Build a Healthcare CRM module for enCARE MEDI REMINDER app. The CRM is an allied
 ## What's Been Implemented
 
 ### Date: April 18, 2026 — E-commerce Invoice Creator (NEW — Phase 1)
-- New "Create Product Invoice" section added to the Products tab of the Patient Detail page (`/app/frontend/src/pages/PatientDetail.jsx`)
+- New "Create Product Invoice" section added on the Products tab of the Patient Detail page (`/app/frontend/src/pages/PatientDetail.jsx`), placed BELOW the existing "Suggested Products for …" section
 - Healthcare Assistant can add multiple products line-by-line (product name + price)
-- Live total computation for all entered items
+- **Total Price** — live-updating sum of all items
+- **Discounted Price** — manually editable input (₹), validated to be between 0 and Total
+- **Savings** — live-updating `Total − Discounted` (never goes negative)
 - "Add Item" button adds new row; per-row remove button (disabled when only 1 row remains)
-- "Cancel" resets the form to a single empty row
-- "Generate Invoice" opens a confirmation dialog listing products + total, asking if the customer agrees to purchase
+- "Cancel" resets the form (items + discounted price) to a single empty row
+- "Generate Invoice" opens a confirmation dialog listing products + Total Price + Discounted Price + Savings, asking if the customer agrees to purchase
 - Dialog has "Cancel" (keeps form as-is) and "I Confirm" (shows success toast, resets form — phase 1 placeholder; actual invoice generation deferred to phase 2)
 - Properly respects marketing_consent = "do_not_contact" (entire Products tab + invoice section remain hidden)
 - All existing Suggested Products / 1mg deep-links + other tabs continue to work (regression validated)
 - Frontend-only change; backend untouched
-- Tested: 14/14 frontend E2E tests passed (iteration_3.json)
+- Tested: 17/17 frontend E2E tests passed (iteration_4.json)
 
 
 
