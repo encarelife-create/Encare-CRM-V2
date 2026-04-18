@@ -77,7 +77,8 @@ import {
   bookLabTest,
   createDoctorAppointment,
   getDoctorAppointments,
-  updateAppointmentStatus
+  updateAppointmentStatus,
+  getLaboratories
 } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 
@@ -102,6 +103,7 @@ export default function PatientDetail() {
   const [customFeaturedTests, setCustomFeaturedTests] = useState([]); // [{name, price, selected}]
   const [customFeaturedInput, setCustomFeaturedInput] = useState({ name: "", price: "" });
   const [preferredTests, setPreferredTests] = useState([{ name: "", price: "" }]);
+  const [catalogLaboratories, setCatalogLaboratories] = useState([]);
   const [labBookingForm, setLabBookingForm] = useState({
     lab_name: "",
     custom_lab_name: "",
@@ -135,14 +137,16 @@ export default function PatientDetail() {
       const res = await getPatient(id);
       setPatient(res.data);
 
-      const [productsRes, labsRes, apptsRes] = await Promise.all([
+      const [productsRes, labsRes, apptsRes, labsCatalogRes] = await Promise.all([
         getProductSuggestions(id),
         getLabTestSuggestions(id),
-        getDoctorAppointments(id)
+        getDoctorAppointments(id),
+        getLaboratories()
       ]);
       setProductSuggestions(productsRes.data);
       setLabSuggestions(labsRes.data);
       setDoctorAppointments(apptsRes.data);
+      setCatalogLaboratories(labsCatalogRes.data || []);
     } catch (error) {
       toast.error("Failed to fetch patient details");
     } finally {
@@ -431,6 +435,10 @@ export default function PatientDetail() {
     const selected = getSelectedFeaturedTests();
     if (selected.length === 0) {
       toast.error("Please select at least one test");
+      return;
+    }
+    if (!labBookingForm.lab_name) {
+      toast.error("Please select a laboratory");
       return;
     }
     setLabFlowStep("booking");
@@ -1969,11 +1977,40 @@ export default function PatientDetail() {
                 </DialogHeader>
                 <div className="py-4 overflow-y-auto flex-1 min-h-0 space-y-4">
                   <p className="text-xs text-slate-500">
-                    Tick the tests the patient wants to perform. You can also add other tests manually below.
+                    Pick the laboratory and tick the tests the patient wants to perform.
                   </p>
+
+                  {/* Lab selection (from Lab Test Catalog > Laboratories) */}
+                  <div className="space-y-2" data-testid="lab-featured-lab-selector">
+                    <Label>Select Laboratory <span className="text-red-500">*</span></Label>
+                    {catalogLaboratories.length === 0 ? (
+                      <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-700" data-testid="no-laboratories-warning">
+                        No laboratories found. Please add labs in the{" "}
+                        <Link to="/lab-tests" className="underline font-medium">Lab Test Catalog → Laboratories</Link>{" "}section first.
+                      </div>
+                    ) : (
+                      <Select
+                        value={labBookingForm.lab_name}
+                        onValueChange={(v) => setLabBookingForm(f => ({ ...f, lab_name: v, use_custom_lab: false }))}
+                      >
+                        <SelectTrigger data-testid="lab-featured-lab-select">
+                          <SelectValue placeholder="Choose a laboratory..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {catalogLaboratories.map((lab) => (
+                            <SelectItem key={lab.id} value={lab.name}>
+                              {lab.name}
+                              {lab.city ? <span className="text-xs text-slate-400 ml-1">• {lab.city}</span> : null}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
 
                   {/* Featured suggestions */}
                   <div className="space-y-2">
+                    <Label>Featured Tests</Label>
                     {labSuggestions.length === 0 ? (
                       <p className="text-sm text-slate-400 italic">No featured tests available for this patient.</p>
                     ) : labSuggestions.map((test, i) => {
@@ -2162,7 +2199,18 @@ export default function PatientDetail() {
                   {/* Lab Name */}
                   <div className="space-y-2">
                     <Label>Lab Name</Label>
-                    {!labBookingForm.use_custom_lab ? (
+                    {labSource === "featured" ? (
+                      <div
+                        className="flex items-center gap-2 p-2.5 rounded-md border border-slate-200 bg-slate-50"
+                        data-testid="lab-booking-lab-readonly"
+                      >
+                        <Building2 className="h-4 w-4 text-slate-400" />
+                        <span className="text-sm text-slate-800 font-medium flex-1">
+                          {labBookingForm.lab_name || "—"}
+                        </span>
+                        <span className="text-xs text-slate-400">(from catalog)</span>
+                      </div>
+                    ) : !labBookingForm.use_custom_lab ? (
                       <div className="flex gap-2">
                         <Select
                           value={labBookingForm.lab_name}
