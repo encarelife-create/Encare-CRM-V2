@@ -264,6 +264,15 @@ export default function Opportunities() {
                         <Badge variant="outline" className={getPriorityColor(opp.priority)}>
                           {opp.priority}
                         </Badge>
+                        {opp.revenue_category && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] font-semibold uppercase tracking-wider ${opp.revenue_category === "lab_test" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-teal-50 text-teal-700 border-teal-200"}`}
+                            data-testid={`revenue-category-${i}`}
+                          >
+                            {opp.revenue_category === "lab_test" ? "Lab Tests" : "Invoice Follow-up"}
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="bg-slate-100 text-slate-600 capitalize">
                           {opp.type.replace('_', ' ')}
                         </Badge>

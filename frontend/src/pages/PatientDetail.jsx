@@ -78,7 +78,8 @@ import {
   createDoctorAppointment,
   getDoctorAppointments,
   updateAppointmentStatus,
-  getLaboratories
+  getLaboratories,
+  recordRevenueConversion
 } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 
@@ -123,6 +124,9 @@ export default function PatientDetail() {
   const [invoiceItems, setInvoiceItems] = useState([{ name: "", price: "" }]);
   const [invoiceDiscountedPrice, setInvoiceDiscountedPrice] = useState("");
   const [showInvoiceConfirm, setShowInvoiceConfirm] = useState(false);
+  // Medicine Refill → Generate Invoice flow
+  const [refillInvoiceMed, setRefillInvoiceMed] = useState(null); // { med, index }
+  const [refillInvoiceForm, setRefillInvoiceForm] = useState({ quantity: "30", amount: "", notes: "" });
   const [medForm, setMedForm] = useState({
     name: "", dosage: "", form: "Tablet", color: "#FF6B6B", instructions: "",
     frequency: "daily", timings: [{ time: "08:00", amount: "1" }],
@@ -238,13 +242,46 @@ export default function PatientDetail() {
   };
 
 
-  const handleRefillMedicine = async (index) => {
+  const openRefillInvoice = (med, index) => {
+    const defaultQty = 30;
+    const unitCost = parseFloat(med?.cost_per_unit);
+    const prefilledAmount = Number.isFinite(unitCost) && unitCost > 0
+      ? String(+(unitCost * defaultQty).toFixed(2))
+      : "";
+    setRefillInvoiceMed({ med, index });
+    setRefillInvoiceForm({ quantity: String(defaultQty), amount: prefilledAmount, notes: "" });
+  };
+
+  const closeRefillInvoice = () => {
+    setRefillInvoiceMed(null);
+    setRefillInvoiceForm({ quantity: "30", amount: "", notes: "" });
+  };
+
+  const handleSubmitRefillInvoice = async () => {
+    if (!refillInvoiceMed) return;
+    const qty = parseInt(refillInvoiceForm.quantity);
+    const amount = parseFloat(refillInvoiceForm.amount);
+    if (!qty || qty <= 0) {
+      toast.error("Please enter a valid refill quantity");
+      return;
+    }
+    if (!amount || amount <= 0) {
+      toast.error("Please enter a valid invoice amount");
+      return;
+    }
     try {
-      await refillMedicine(id, index, 30);
-      toast.success("Medicine refilled!");
+      await refillMedicine(id, refillInvoiceMed.index, qty);
+      await recordRevenueConversion(id, {
+        category: "invoice_followup",
+        source: "medicine_refill",
+        amount,
+        description: `Refill: ${refillInvoiceMed.med?.name || "Medicine"} × ${qty}${refillInvoiceForm.notes ? ` — ${refillInvoiceForm.notes}` : ""}`
+      });
+      toast.success(`Invoice generated — ₹${amount.toLocaleString("en-IN")} added to converted revenue`);
+      closeRefillInvoice();
       fetchPatient();
     } catch (error) {
-      toast.error("Failed to refill medicine");
+      toast.error("Failed to generate refill invoice");
     }
   };
 
@@ -566,10 +603,23 @@ export default function PatientDetail() {
     setShowInvoiceConfirm(true);
   };
 
-  const handleConfirmInvoice = () => {
-    toast.success("Customer confirmed. Invoice generation will proceed in the next phase.");
-    setShowInvoiceConfirm(false);
-    resetInvoice();
+  const handleConfirmInvoice = async () => {
+    try {
+      await recordRevenueConversion(id, {
+        category: "invoice_followup",
+        source: "product_invoice",
+        amount: effectiveDiscountedPrice,
+        description: `Product invoice: ${invoiceItems
+          .filter(it => it.name.trim() && parseFloat(it.price) > 0)
+          .map(it => it.name.trim())
+          .join(", ")}`
+      });
+      toast.success(`Customer confirmed — ₹${effectiveDiscountedPrice.toLocaleString("en-IN")} added to converted revenue`);
+      setShowInvoiceConfirm(false);
+      resetInvoice();
+    } catch (error) {
+      toast.error("Failed to record the invoice conversion");
+    }
   };
 
   if (loading) {
@@ -1184,11 +1234,11 @@ export default function PatientDetail() {
                               size="sm"
                               variant={stockInfo.isLow ? "default" : "outline"}
                               className={stockInfo.isLow ? "gradient-coral text-white" : ""}
-                              onClick={() => handleRefillMedicine(i)}
+                              onClick={() => openRefillInvoice(med, i)}
                               data-testid={`refill-medicine-${i}`}
                             >
                               <Plus className="h-4 w-4 mr-1" />
-                              Refill
+                              Generate Invoice
                             </Button>
                           </div>
                         </div>
@@ -1375,6 +1425,91 @@ export default function PatientDetail() {
                   <Button variant="outline" onClick={() => { setShowMedicineDialog(false); resetMedForm(); }}>Cancel</Button>
                   <Button onClick={handleSaveMedicine} className="gradient-teal text-white" data-testid="save-medicine-btn">
                     {editingMedicine ? 'Update Medicine' : 'Add Medicine'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Refill → Generate Invoice Dialog */}
+            <Dialog open={!!refillInvoiceMed} onOpenChange={(open) => { if (!open) closeRefillInvoice(); }}>
+              <DialogContent className="max-w-md" data-testid="refill-invoice-dialog">
+                <DialogHeader>
+                  <DialogTitle>Generate Invoice — Medicine Refill</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <p className="text-xs text-slate-400 uppercase tracking-wider">Medicine</p>
+                    <p className="font-semibold text-slate-800" data-testid="refill-invoice-med-name">
+                      {refillInvoiceMed?.med?.name || ""}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {refillInvoiceMed?.med?.dosage}
+                      {refillInvoiceMed?.med?.cost_per_unit ? ` • Cost/unit ₹${refillInvoiceMed.med.cost_per_unit}` : ""}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Refill Quantity *</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={refillInvoiceForm.quantity}
+                        onChange={(e) => {
+                          const q = e.target.value;
+                          const unit = parseFloat(refillInvoiceMed?.med?.cost_per_unit);
+                          const qty = parseInt(q);
+                          setRefillInvoiceForm(prev => ({
+                            ...prev,
+                            quantity: q,
+                            amount: Number.isFinite(unit) && unit > 0 && qty > 0
+                              ? String(+(unit * qty).toFixed(2))
+                              : prev.amount
+                          }));
+                        }}
+                        data-testid="refill-invoice-quantity"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Invoice Amount (₹) *</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={refillInvoiceForm.amount}
+                        onChange={(e) => setRefillInvoiceForm(prev => ({ ...prev, amount: e.target.value }))}
+                        placeholder="0.00"
+                        data-testid="refill-invoice-amount"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Notes (Optional)</Label>
+                    <Textarea
+                      rows={2}
+                      value={refillInvoiceForm.notes}
+                      onChange={(e) => setRefillInvoiceForm(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Any notes for this refill invoice"
+                      data-testid="refill-invoice-notes"
+                    />
+                  </div>
+
+                  <div className="rounded-md bg-teal-50 border border-teal-100 px-3 py-2 text-xs text-teal-700">
+                    On confirm, the medicine stock will be updated and ₹{parseFloat(refillInvoiceForm.amount || 0).toLocaleString("en-IN")} will be recorded as <span className="font-semibold">Converted Revenue</span> under Invoice Follow-up for this month.
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={closeRefillInvoice} data-testid="refill-invoice-cancel-btn">
+                    Cancel
+                  </Button>
+                  <Button
+                    className="gradient-teal text-white"
+                    onClick={handleSubmitRefillInvoice}
+                    data-testid="refill-invoice-confirm-btn"
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                    Confirm & Refill
                   </Button>
                 </DialogFooter>
               </DialogContent>

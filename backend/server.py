@@ -266,6 +266,48 @@ class Opportunity(BaseModel):
     status: str = "pending"  # pending, contacted, converted, dismissed
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
+
+# ======================== REVENUE CATEGORIZATION ========================
+
+# Detailed opp type -> parent revenue category
+# Per product spec: medicine refills + product sales + invoiced items all roll up
+# under "Invoice Follow-up". Lab Tests is its own category.
+REVENUE_CATEGORY_BY_OPP_TYPE = {
+    "refill": "invoice_followup",
+    "product": "invoice_followup",
+    "invoice": "invoice_followup",
+    "lab_test": "lab_test",
+}
+
+
+def get_revenue_category(opp_type: str) -> Optional[str]:
+    return REVENUE_CATEGORY_BY_OPP_TYPE.get(opp_type)
+
+
+async def record_revenue_conversion(
+    patient_id: str,
+    patient_name: str,
+    category: str,
+    source: str,
+    amount: float,
+    description: str = "",
+) -> Dict[str, Any]:
+    """Persist a converted-revenue event used to track actual conversion against opportunities."""
+    now = datetime.now(timezone.utc)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "patient_id": patient_id,
+        "patient_name": patient_name,
+        "category": category,  # invoice_followup | lab_test
+        "source": source,      # product_invoice | medicine_refill | lab_booking
+        "amount": float(amount or 0),
+        "description": description,
+        "month": now.strftime("%Y-%m"),
+        "created_at": now.isoformat(),
+    }
+    await db.revenue_conversions.insert_one(doc)
+    return {k: v for k, v in doc.items() if k != "_id"}
+
 # ======================== PRODUCT CATALOG ========================
 
 PRODUCT_CATALOG = {
@@ -1051,6 +1093,21 @@ async def book_lab_test(patient_id: str, data: Dict):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.lab_bookings.insert_one(booking)
+
+    # Auto-record converted revenue for lab tests (category: lab_test)
+    if booking["price"]:
+        try:
+            await record_revenue_conversion(
+                patient_id=patient_id,
+                patient_name=patient.get("name", ""),
+                category="lab_test",
+                source="lab_booking",
+                amount=float(booking["price"]),
+                description=f"{booking['test_name']} at {booking.get('lab_name') or 'Lab'}",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record lab test revenue: {e}")
+
     return {k: v for k, v in booking.items() if k != "_id"}
 
 @api_router.get("/patients/{patient_id}/lab-tests", response_model=List[Dict])
@@ -1109,6 +1166,9 @@ async def get_opportunities(
         query["status"] = status
     
     opportunities = await db.opportunities.find(query, {"_id": 0}).to_list(500)
+    # Enrich with parent revenue_category for UI grouping
+    for opp in opportunities:
+        opp["revenue_category"] = get_revenue_category(opp.get("type"))
     return opportunities
 
 @api_router.post("/opportunities/generate")
@@ -1278,6 +1338,97 @@ async def get_dashboard_stats():
         "today_tasks": today_tasks,
         "disease_distribution": [{"disease": d["_id"], "count": d["count"]} for d in disease_dist]
     }
+
+
+@api_router.post("/patients/{patient_id}/revenue/convert")
+async def record_conversion_endpoint(patient_id: str, data: Dict):
+    """Record a converted-revenue event (e.g. product invoice confirmed, medicine refill invoiced).
+
+    Body:
+        category: 'invoice_followup' | 'lab_test'
+        source: 'product_invoice' | 'medicine_refill' | 'lab_booking' | custom
+        amount: float
+        description: str (optional)
+    """
+    patient = await db.patients.find_one({"id": patient_id}, {"_id": 0, "name": 1})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    category = (data.get("category") or "").strip()
+    source = (data.get("source") or "").strip()
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="amount must be numeric")
+
+    if category not in ("invoice_followup", "lab_test"):
+        raise HTTPException(status_code=400, detail="category must be invoice_followup or lab_test")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be > 0")
+    if not source:
+        raise HTTPException(status_code=400, detail="source is required")
+
+    doc = await record_revenue_conversion(
+        patient_id=patient_id,
+        patient_name=patient.get("name", ""),
+        category=category,
+        source=source,
+        amount=amount,
+        description=data.get("description", ""),
+    )
+    return doc
+
+
+@api_router.get("/dashboard/revenue-summary")
+async def get_revenue_summary(month: Optional[str] = None):
+    """Return Expected vs Converted revenue for the given month (YYYY-MM, default = current).
+
+    Expected = sum(expected_revenue) of pending opportunities, split by Revenue Category.
+    Converted = sum(amount) of revenue_conversions documents whose month matches, split by category.
+    """
+    if not month:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    # --- Expected (from pending opportunities, grouped into parent category) ---
+    expected_by_cat = {"invoice_followup": 0.0, "lab_test": 0.0}
+    pending_opps = await db.opportunities.find(
+        {"status": "pending"}, {"_id": 0, "type": 1, "expected_revenue": 1}
+    ).to_list(5000)
+    for opp in pending_opps:
+        cat = get_revenue_category(opp.get("type"))
+        if cat in expected_by_cat:
+            expected_by_cat[cat] += float(opp.get("expected_revenue", 0) or 0)
+
+    # --- Converted (from revenue_conversions for the month) ---
+    converted_by_cat = {"invoice_followup": 0.0, "lab_test": 0.0}
+    conv_cursor = db.revenue_conversions.find(
+        {"month": month}, {"_id": 0, "category": 1, "amount": 1}
+    )
+    async for c in conv_cursor:
+        cat = c.get("category")
+        if cat in converted_by_cat:
+            converted_by_cat[cat] += float(c.get("amount", 0) or 0)
+
+    expected_total = round(sum(expected_by_cat.values()), 2)
+    converted_total = round(sum(converted_by_cat.values()), 2)
+    denom = expected_total + converted_total
+    conversion_rate = round((converted_total / denom) * 100, 1) if denom > 0 else 0.0
+
+    return {
+        "month": month,
+        "expected": {
+            "invoice_followup": round(expected_by_cat["invoice_followup"], 2),
+            "lab_test": round(expected_by_cat["lab_test"], 2),
+            "total": expected_total,
+        },
+        "converted": {
+            "invoice_followup": round(converted_by_cat["invoice_followup"], 2),
+            "lab_test": round(converted_by_cat["lab_test"], 2),
+            "total": converted_total,
+        },
+        "conversion_rate": conversion_rate,
+    }
+
 
 @api_router.get("/dashboard/patients-to-call")
 async def get_patients_to_call():

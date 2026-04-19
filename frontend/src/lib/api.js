@@ -13,6 +13,11 @@ const api = axios.create({
 // Dashboard
 export const getDashboardStats = () => api.get('/dashboard/stats');
 export const getPatientsToCall = () => api.get('/dashboard/patients-to-call');
+export const getRevenueSummary = (month) => api.get('/dashboard/revenue-summary', { params: month ? { month } : {} });
+
+// Revenue conversions
+export const recordRevenueConversion = (patientId, data) =>
+  api.post(`/patients/${patientId}/revenue/convert`, data);
 
 // Patients
 export const getPatients = (params) => api.get('/patients', { params });

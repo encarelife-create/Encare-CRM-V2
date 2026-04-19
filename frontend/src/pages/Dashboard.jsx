@@ -21,23 +21,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { getDashboardStats, getPatientsToCall, seedDatabase, generateOpportunities } from "@/lib/api";
+import { getDashboardStats, getPatientsToCall, seedDatabase, generateOpportunities, getRevenueSummary } from "@/lib/api";
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [patientsToCall, setPatientsToCall] = useState([]);
+  const [revenueSummary, setRevenueSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
   const [callFilter, setCallFilter] = useState("all");
 
   const fetchData = async () => {
     try {
-      const [statsRes, patientsRes] = await Promise.all([
+      const [statsRes, patientsRes, revRes] = await Promise.all([
         getDashboardStats(),
-        getPatientsToCall()
+        getPatientsToCall(),
+        getRevenueSummary()
       ]);
       setStats(statsRes.data);
       setPatientsToCall(patientsRes.data);
+      setRevenueSummary(revRes.data);
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
       if (error.response?.status === 500 || !stats) {
@@ -105,22 +108,20 @@ export default function Dashboard() {
       icon: AlertTriangle,
       color: "bg-red-50 text-red-500",
       link: "/patients?priority=high"
-    },
-    {
-      label: "Expected Revenue",
-      value: `₹${(stats?.expected_revenue || 0).toLocaleString('en-IN')}`,
-      icon: TrendingUp,
-      color: "bg-green-50 text-green-500",
-      link: "/opportunities"
-    },
-    {
-      label: "Monthly Invoice",
-      value: `₹${(stats?.total_monthly_invoice || 0).toLocaleString('en-IN')}`,
-      icon: IndianRupee,
-      color: "bg-orange-50 text-orange-500",
-      link: "/opportunities"
     }
   ];
+
+  // Current month label for revenue section
+  const monthLabel = revenueSummary?.month
+    ? new Date(revenueSummary.month + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" })
+    : new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const expectedTotal = revenueSummary?.expected?.total || 0;
+  const convertedTotal = revenueSummary?.converted?.total || 0;
+  const conversionRate = revenueSummary?.conversion_rate || 0;
+  const expectedInvoice = revenueSummary?.expected?.invoice_followup || 0;
+  const expectedLab = revenueSummary?.expected?.lab_test || 0;
+  const convertedInvoice = revenueSummary?.converted?.invoice_followup || 0;
+  const convertedLab = revenueSummary?.converted?.lab_test || 0;
 
   const opportunityCards = [
     { type: "refill", label: "Medicine Refills", icon: Pill, count: stats?.opportunities?.refills || 0, color: "text-red-500 bg-red-50" },
@@ -167,7 +168,7 @@ export default function Dashboard() {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {quickStats.map((stat, i) => (
           <Link to={stat.link} key={i}>
             <Card className="card-hover cursor-pointer" data-testid={`stat-${stat.label.toLowerCase().replace(/ /g, '-')}`}>
@@ -185,6 +186,90 @@ export default function Dashboard() {
             </Card>
           </Link>
         ))}
+      </div>
+
+      {/* Revenue — Expected vs Converted (Monthly) */}
+      <div data-testid="revenue-section">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-slate-900 font-['Manrope']">
+            Revenue <span className="text-slate-400 font-normal text-sm">• {monthLabel}</span>
+          </h2>
+          <Badge variant="outline" className={`${conversionRate >= 50 ? 'bg-green-50 text-green-700 border-green-200' : conversionRate >= 20 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`} data-testid="conversion-rate-badge">
+            {conversionRate}% converted
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Expected Revenue KPI */}
+          <Link to="/opportunities">
+            <Card className="card-hover cursor-pointer border-l-4 border-l-teal-400" data-testid="revenue-expected-card">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-xl bg-teal-50 text-teal-500">
+                      <TrendingUp className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 uppercase tracking-wider">Revenue Opportunities</p>
+                      <p className="text-2xl font-bold text-slate-900 tabular-nums" data-testid="expected-total">
+                        ₹{expectedTotal.toLocaleString('en-IN')}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">from pending opportunities</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-slate-500">Invoice Follow-up</p>
+                    <p className="font-semibold text-slate-800 tabular-nums" data-testid="expected-invoice-followup">
+                      ₹{expectedInvoice.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Lab Tests</p>
+                    <p className="font-semibold text-slate-800 tabular-nums" data-testid="expected-lab-test">
+                      ₹{expectedLab.toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* Converted Revenue KPI */}
+          <Card className="card-hover border-l-4 border-l-green-500" data-testid="revenue-converted-card">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-xl bg-green-50 text-green-600">
+                    <IndianRupee className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider">Converted Revenue</p>
+                    <p className="text-2xl font-bold text-green-700 tabular-nums" data-testid="converted-total">
+                      ₹{convertedTotal.toLocaleString('en-IN')}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">from bookings & invoices</p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className="text-slate-500">Invoice Follow-up</p>
+                  <p className="font-semibold text-slate-800 tabular-nums" data-testid="converted-invoice-followup">
+                    ₹{convertedInvoice.toLocaleString('en-IN')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500">Lab Tests</p>
+                  <p className="font-semibold text-slate-800 tabular-nums" data-testid="converted-lab-test">
+                    ₹{convertedLab.toLocaleString('en-IN')}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Quick Actions */}
